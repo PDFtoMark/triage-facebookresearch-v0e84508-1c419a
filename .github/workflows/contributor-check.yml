@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: 32-core-ubuntu
     steps:
       - name: pass
         run: echo "passed"
